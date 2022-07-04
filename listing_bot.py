@@ -110,10 +110,12 @@ def get_listing_price(token):
 
 def search_for_new_listing(policy, last_timestamp):
     params = {'policyIds': f'["{policy}"]', 'saleType': 'buy-now', 'sortBy': 'recently-listed', 'traits': str({}), 'nameQuery': '', 'verified': 'default', 'pagination': str({}), 'size': 20}
-    jpgstore_search = requests.get(JPGSTOREAPI_SEARCH, params=params)
-    logging.debug(jpgstore_search.text)
+    jpgstore_search = requests.get(JPGSTOREAPI_SEARCH, params=params).json()
+    logging.debug(jpgstore_search)
+    if not 'tokens' in jpgstore_search:
+        return []
     new_tokens = []
-    for token in jpgstore_search.json()['tokens']:
+    for token in jpgstore_search['tokens']:
         token_timestamp = get_datetime_for(token['listed_at'])
         if token_timestamp > last_timestamp:
             token['token_timestamp'] = token_timestamp
