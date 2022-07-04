@@ -1,0 +1,12 @@
+# Vim-related tokens
+*.swo
+*.swp
+
+# Bot Tokens (private keys)
+bot_tokens/
+
+# Logfiles
+logs/
+
+# Python-related files and directories
+venv/
