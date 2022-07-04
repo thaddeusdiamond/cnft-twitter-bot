@@ -25,11 +25,12 @@ SELENIUM_DELAY = 5
 LOVELACE_TO_ADA = 1000000.0
 
 # jpg.store API Information
-JPGSTORE_ASSET = 'https://www.jpg.store/asset/'
+JPGSTORE_ASSET = 'https://www.jpg.store/asset'
 JPGSTOREAPI_SEARCH = 'https://server.jpgstoreapis.com/search/tokens'
 JPGSTOREAPI_COLLECTION = 'https://server.jpgstoreapis.com/collection'
 JPGSTOREAPI_DELAY = 60
 JPGSTOREAPI_TIMESTR = '%Y-%m-%dT%H:%M:%S.%f%z'
+JPGSTOREAPI_TIMESTR_FALLBACK = '%Y-%m-%dT%H:%M:%S%z'
 
 class Token(object):
     """
@@ -89,8 +90,7 @@ def post_tweet(msg, consumer_key, secret_parameters):
     tweet_response = oauth.post('https://api.twitter.com/2/tweets', json={'text': msg})
     logging.info(tweet_response.text)
 
-def stringify_token(token, lovelace_price, traits):
-    price = lovelace_price / LOVELACE_TO_ADA
+def stringify_token(token, price, traits):
     traits_str = ''
     for trait in traits:
         if 'traits' in token and trait in token['traits']:
@@ -99,17 +99,29 @@ def stringify_token(token, lovelace_price, traits):
             traits_str += token['traits'][trait]
     return f"{price:,.2f}₳. {token['display_name']}\n{traits_str}\n{JPGSTORE_ASSET}/{token['asset_id']}"
 
+def get_datetime_for(token_timestr):
+    try:
+        return datetime.datetime.strptime(token_timestr, JPGSTOREAPI_TIMESTR)
+    except ValueError:
+        return datetime.datetime.strptime(token_timestr, JPGSTOREAPI_TIMESTR_FALLBACK)
+
+def get_listing_price(token):
+    return int(token['listing_lovelace']) / LOVELACE_TO_ADA
+
 def search_for_new_listing(policy, last_timestamp):
     params = {'policyIds': f'["{policy}"]', 'saleType': 'buy-now', 'sortBy': 'recently-listed', 'traits': str({}), 'nameQuery': '', 'verified': 'default', 'pagination': str({}), 'size': 20}
     jpgstore_search = requests.get(JPGSTOREAPI_SEARCH, params=params)
     logging.debug(jpgstore_search.text)
     new_tokens = []
     for token in jpgstore_search.json()['tokens']:
-        token_timestamp = datetime.datetime.strptime(token['listed_at'], JPGSTOREAPI_TIMESTR)
+        token_timestamp = get_datetime_for(token['listed_at'])
         if token_timestamp > last_timestamp:
             token['token_timestamp'] = token_timestamp
             new_tokens.append(token)
     return new_tokens
+
+def get_sale_price(token):
+    return int(token['amount_lovelace']) / LOVELACE_TO_ADA
 
 def search_for_new_sale(policy, last_timestamp):
     recent_txs = f"{JPGSTOREAPI_COLLECTION}/{policy}/transactions?page=1&count=20"
@@ -117,18 +129,18 @@ def search_for_new_sale(policy, last_timestamp):
     logging.debug(jpgstore_search.text)
     new_tokens = []
     for token in jpgstore_search.json()['transactions']:
-        token_timestamp = datetime.datetime.strptime(token['confirmed_at'], JPGSTOREAPI_TIMESTR)
+        token_timestamp = get_datetime_for(token['confirmed_at'])
         if token_timestamp > last_timestamp:
             token['token_timestamp'] = token_timestamp
             new_tokens.append(token)
     return new_tokens
 
-def search_and_post_listing(policy, traits, key, secrets, timekeeper, search_func):
-    logging.info(f'{policy}: Last listing timestamp of {timekeeper[policy]}')
+def search_and_post(policy, traits, key, secrets, timekeeper, type, search_func, price_func):
+    logging.info(f'{policy}: Last {type} timestamp of {timekeeper[policy]}')
     new_tokens = search_func(policy, timekeeper[policy])
     for token in reversed(new_tokens):
-        lovelace_price = int(token['listing_lovelace'])
-        post_tweet(stringify_token(token, lovelace_price, traits), key, secrets)
+        logging.debug(token)
+        post_tweet(stringify_token(token, price_func(token), traits), key, secrets)
         timekeeper[policy] = datetime.datetime.fromtimestamp(time.time(), tz=pytz.utc)
 
 def gen_token(filename):
@@ -146,7 +158,7 @@ def get_parser():
     resource_parser.add_argument('--consumer-key', required=True)
     resource_parser.add_argument('--client-secret', required=True)
 
-    listing_parser = subparsers.add_parser('listing-bot', help='Fire up the listing and sales bots for the service.')
+    listing_parser = subparsers.add_parser('listing-sales-bot', help='Fire up the listing and sales bots for the service.')
     listing_parser.add_argument('--listing-tokens-dir', required=False)
     listing_parser.add_argument('--sales-tokens-dir', required=False)
 
@@ -186,16 +198,23 @@ if __name__ == '__main__':
                 }
             }))
     elif args.command == 'listing-sales-bot':
-        listing_tokens = [gen_token(os.path.join(args.listing_tokens_dir, filename)) for filename in os.listdir(args.listing_tokens_dir)]
-        listing_timekeeper = { token.policy:datetime.datetime.fromtimestamp(time.time(), tz=pytz.utc) for token in listing_tokens }
-        sales_tokens = [gen_token(os.path.join(args.sales_tokens_dir, filename)) for filename in os.listdir(args.sales_tokens_dir)]
-        sales_timekeeper = { token.policy:datetime.datetime.fromtimestamp(time.time(), tz=pytz.utc) for token in listing_tokens }
-        while True:
-            for token in listing_tokens:
-                search_and_post(token.policy, token.traits, token.key, token.secrets, listing_timekeeper, search_for_new_listing)
-            for token in sales_tokens:
-                search_and_post(token.policy, token.traits, token.key, token.secrets, sales_timekeeper, search_for_new_sale)
-            time.sleep(JPGSTOREAPI_DELAY)
+        listing_tokens = []
+        if args.listing_tokens_dir:
+            listing_tokens = [gen_token(os.path.join(args.listing_tokens_dir, filename)) for filename in os.listdir(args.listing_tokens_dir)]
+            listing_timekeeper = { token.policy:datetime.datetime.fromtimestamp(time.time(), tz=pytz.utc) for token in listing_tokens }
+        sales_tokens = []
+        if args.sales_tokens_dir:
+            sales_tokens = [gen_token(os.path.join(args.sales_tokens_dir, filename)) for filename in os.listdir(args.sales_tokens_dir)]
+            sales_timekeeper = { token.policy:datetime.datetime.fromtimestamp(time.time(), tz=pytz.utc) for token in sales_tokens }
+        if not listing_tokens and not sales_tokens:
+            logging.info('Please specify at least one of "--listing-tokens-dir" or "--sales-tokens-dir"')
+        else:
+            while True:
+                for token in listing_tokens:
+                    search_and_post(token.policy, token.traits, token.key, token.secrets, listing_timekeeper, 'listing', search_for_new_listing, get_listing_price)
+                for token in sales_tokens:
+                    search_and_post(token.policy, token.traits, token.key, token.secrets, sales_timekeeper, 'sales', search_for_new_sale, get_sale_price)
+                time.sleep(JPGSTOREAPI_DELAY)
     elif args.command == 'purchase-bot':
         policies_prices = [arg.split('=') for arg in args.policies_prices]
         timekeeper = { policy_price[0]:datetime.datetime.fromtimestamp(time.time() - 1000000, tz=pytz.utc) for policy_price in policies_prices }
