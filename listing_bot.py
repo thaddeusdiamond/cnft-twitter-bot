@@ -111,31 +111,39 @@ def get_listing_price(token):
 def search_for_new_listing(policy, last_timestamp):
     params = {'policyIds': f'["{policy}"]', 'saleType': 'buy-now', 'sortBy': 'recently-listed', 'traits': str({}), 'nameQuery': '', 'verified': 'default', 'pagination': str({}), 'size': 20}
     jpgstore_search = requests.get(JPGSTOREAPI_SEARCH, params=params).json()
-    logging.debug(jpgstore_search)
-    if not 'tokens' in jpgstore_search:
-        return []
-    new_tokens = []
-    for token in jpgstore_search['tokens']:
-        token_timestamp = get_datetime_for(token['listed_at'])
-        if token_timestamp > last_timestamp:
-            token['token_timestamp'] = token_timestamp
-            new_tokens.append(token)
-    return new_tokens
+    try:
+        logging.debug(jpgstore_search)
+        if not 'tokens' in jpgstore_search:
+            return []
+        new_tokens = []
+        for token in jpgstore_search['tokens']:
+            token_timestamp = get_datetime_for(token['listed_at'])
+            if token_timestamp > last_timestamp:
+                token['token_timestamp'] = token_timestamp
+                new_tokens.append(token)
+        return new_tokens
+    except Exception as e:
+        logging.info(jpgstore_search)
+        raise e
 
 def get_sale_price(token):
     return int(token['amount_lovelace']) / LOVELACE_TO_ADA
 
 def search_for_new_sale(policy, last_timestamp):
     recent_txs = f"{JPGSTOREAPI_COLLECTION}/{policy}/transactions?page=1&count=20"
-    jpgstore_search = requests.get(recent_txs)
-    logging.debug(jpgstore_search.text)
-    new_tokens = []
-    for token in jpgstore_search.json()['transactions']:
-        token_timestamp = get_datetime_for(token['confirmed_at'])
-        if token_timestamp > last_timestamp:
-            token['token_timestamp'] = token_timestamp
-            new_tokens.append(token)
-    return new_tokens
+    jpgstore_search = requests.get(recent_txs).json()
+    try:
+        logging.debug(jpgstore_search)
+        new_tokens = []
+        for token in jpgstore_search['transactions']:
+            token_timestamp = get_datetime_for(token['confirmed_at'])
+            if token_timestamp > last_timestamp:
+                token['token_timestamp'] = token_timestamp
+                new_tokens.append(token)
+        return new_tokens
+    except Exception as e:
+        logging.info(jpgstore_search)
+        raise e
 
 def search_and_post(policy, traits, key, secrets, timekeeper, type, search_func, price_func):
     logging.info(f'{policy}: Last {type} timestamp of {timekeeper[policy]}')
