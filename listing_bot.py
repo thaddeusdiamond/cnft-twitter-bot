@@ -136,7 +136,7 @@ def search_for_new_sale(policy, last_timestamp):
         logging.debug(jpgstore_search)
         new_tokens = []
         for token in jpgstore_search['transactions']:
-            token_timestamp = get_datetime_for(token['confirmed_at'])
+            token_timestamp = get_datetime_for(token['created_at'])
             if token_timestamp > last_timestamp:
                 token['token_timestamp'] = token_timestamp
                 new_tokens.append(token)
