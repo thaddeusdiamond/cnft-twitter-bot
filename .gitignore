@@ -4,9 +4,14 @@
 
 # Bot Tokens (private keys)
 bot_tokens/
+stats_bot/
 
 # Logfiles
 logs/
 
 # Python-related files and directories
 venv/
+__pycache__/
+
+# Mac Development
+.DS_Store
