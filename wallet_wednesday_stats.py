@@ -118,11 +118,14 @@ def iterate_over_statistics(mapping, time_of_day, exclusions):
         if statistic['do_not_repeat'] and statistic['name'] in exclusions:
             continue
         if statistic['time_of_day'] < time_of_day:
-            tweets = statistic['function']()
-            for tweet in tweets:
-                logging.info(f"Tweeting '{tweet}' for '{statistic['name']}' at {time_of_day}")
-                post_tweet(tweet, key, secrets)
-            executed_statistics.append(statistic['name'])
+            try:
+                tweets = statistic['function']()
+                for tweet in tweets:
+                    logging.info(f"Tweeting '{tweet}' for '{statistic['name']}' at {time_of_day}")
+                    post_tweet(tweet, key, secrets)
+                executed_statistics.append(statistic['name'])
+            except:
+                logging.exception(f"An error occurred retrieving {statistic['name']} at {time_of_day}... continuing...")
     return executed_statistics
 
 def get_time_of_day():
