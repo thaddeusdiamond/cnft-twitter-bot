@@ -72,7 +72,7 @@ def current_ada_price():
         leading_emoji = '📈 +'
         trailing_emoji = '🤩'
     else:
-        leading_emoji = '📉 -'
+        leading_emoji = '📉 '
         trailing_emoji = '🥴'
     return [f"{get_tweet_header('🚨Daily Price Alert🚨')}📊 Cardano $ADA - ${current_ada_price:0.4f}USD 💵\n{leading_emoji}{usd_24h_change:0.2f}% 24Hr Change {trailing_emoji}\n\n{get_tweet_footer('Data from CoinGecko')}"]
 
