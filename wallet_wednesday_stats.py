@@ -28,6 +28,7 @@ def top_twentyfive_aths():
         'https://api.opencnft.io/1/rank',
         {'window': 'all'}
     ).json()['ranking']
+    logging.info(TOP_COLLECTIONS_CACHE)
     for idx in range(25):
         collection = top_collections[idx]
         for policy in collection['policies']:
@@ -167,16 +168,20 @@ if __name__ == '__main__':
         with open(args.acct_keys, 'r') as keys_handle:
             keys_json = json.load(keys_handle)
             (key, secrets) = keys_json['key'], keys_json['secrets']
-        exclusions = set()
         stats_mapping = get_statistics_map()[args.stats_group]
+        old_time_of_day = None
+        exclusions = set()
         while True:
             time_of_day = get_time_of_day()
+            if old_time_of_day and time_of_day < old_time_of_day:
+                logging.info(f"Resetting statistics...")
+                exclusions.clear()
+            old_time_of_day = time_of_day
             logging.info(f"Beginning new run at {time_of_day}...")
             executed_statistics = iterate_over_statistics(stats_mapping, time_of_day, exclusions)
             exclusions.update(executed_statistics)
             logging.info(f"Have already tweeted out: {exclusions}")
             logging.info('...Completed the most recent statistics run')
-            # TODO: Reset each day
             sleep(60)
     else:
         raise ValueError(f"Illegal state occured with '{args.command}' passed")
